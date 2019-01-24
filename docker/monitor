@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Wait for gobgpd to start up and create the unix domain socket for the API.
+# This will be done manually by the orchestrator because it needs to be
+# launched in a separate network namespace.
+echo "Waiting for gobgpd.sock..."
+while [[ ! -S /gobgpd.sock ]]; do sleep 1; done
+
+# Get gobgp's pid so we can watch it and know if it dies.
+GOBGPD_PID=$(ps ax -o pid,cmd | grep gobgpd | grep -v grep | awk '{print $1}')
+if [[ $? -ne 0 || -z "${GOBGPD_PID}" ]]; then
+  echo "Detected gobgpd launch, but couldn't get pid."
+  exit 1
+fi
+echo "gobgpd launched, pid=${GOBGPD_PID}"
+
+# Launch socat that will listen on TCP and communicate the data that goes over
+# that TCP connection to the gobgpd unix socket.
+socat TCP-LISTEN:50051,fork UNIX-CLIENT:/gobgpd.sock &
+SOCAT_PID=$!
+echo "socat launched, pid=${SOCAT_PID}"
+
+# If this bash script (PID 1 in the docker container) receives SIGTERM or
+# SIGINT we need to send those signals to both gobgpd and socat.
+function die() {
+  echo "Received signal to die!"
+  kill -TERM ${SOCAT_PID}
+  echo "Sent SIGTERM to socat..."
+  kill -TERM ${GOBGPD_PID}
+  echo "Sent SIGTERM to gobgpd...."
+  exit 0
+}
+
+trap die SIGINT
+trap die SIGTERM
+
+# Monitor both processes. If either one exits then exit from this script with
+# an error, which will stop the container and the orchestrator will restart it.
+while sleep 1; do
+  if [[ ! -d "/proc/${SOCAT_PID}" ]]; then
+    wait ${SOCAT_PID}
+    exit_status=$?
+    echo "socat died(${exit_status})...exiting"
+    exit 1
+  fi
+  if [[ ! -d "/proc/${GOBGPD_PID}" ]]; then
+    # Unfortunately, can't get the exit code since gobgpd isn't a child of this
+    # bash script.
+    echo "gobgp died...exiting"
+    exit 1
+  fi
+done

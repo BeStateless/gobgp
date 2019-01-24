@@ -1,0 +1,82 @@
+Allow API calls over unix domain sockets.
+
+From: Aaron Jones <aaron@vexing.codes>
+
+
+---
+ cmd/gobgp/common.go       |   11 ++++++++---
+ cmd/gobgp/root.go         |    2 ++
+ pkg/server/grpc_server.go |   17 +++++++++++++++--
+ 3 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/cmd/gobgp/common.go b/cmd/gobgp/common.go
+index 8fa31fc8..1d6c512b 100644
+--- a/cmd/gobgp/common.go
++++ b/cmd/gobgp/common.go
+@@ -200,9 +200,14 @@ func newClient(ctx context.Context) (api.GobgpApiClient, context.CancelFunc, err
+ 		grpcOpts = append(grpcOpts, grpc.WithInsecure())
+ 	}
+ 
+-	target := net.JoinHostPort(globalOpts.Host, strconv.Itoa(globalOpts.Port))
+-	if target == "" {
+-		target = ":50051"
++	var target string
++	if globalOpts.UnixSocket != "" {
++		target = fmt.Sprintf("unix://%s", globalOpts.UnixSocket)
++	} else {
++		target = net.JoinHostPort(globalOpts.Host, strconv.Itoa(globalOpts.Port))
++		if target == "" {
++			target = ":50051"
++		}
+ 	}
+ 	cc, cancel := context.WithTimeout(ctx, time.Second)
+ 	conn, err := grpc.DialContext(cc, target, grpcOpts...)
+diff --git a/cmd/gobgp/root.go b/cmd/gobgp/root.go
+index dc8a3fe1..2738581f 100644
+--- a/cmd/gobgp/root.go
++++ b/cmd/gobgp/root.go
+@@ -26,6 +26,7 @@ import (
+ )
+ 
+ var globalOpts struct {
++	UnixSocket   string
+ 	Host         string
+ 	Port         int
+ 	Debug        bool
+@@ -80,6 +81,7 @@ func newRootCmd() *cobra.Command {
+ 		},
+ 	}
+ 
++	rootCmd.PersistentFlags().StringVarP(&globalOpts.UnixSocket, "unix-socket", "", "", "Location of unix socket to use instead of TCP.")
+ 	rootCmd.PersistentFlags().StringVarP(&globalOpts.Host, "host", "u", "127.0.0.1", "host")
+ 	rootCmd.PersistentFlags().IntVarP(&globalOpts.Port, "port", "p", 50051, "port")
+ 	rootCmd.PersistentFlags().BoolVarP(&globalOpts.Json, "json", "j", false, "use json format to output format")
+diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
+index cb93c599..b43e8e4c 100644
+--- a/pkg/server/grpc_server.go
++++ b/pkg/server/grpc_server.go
+@@ -64,9 +64,22 @@ func (s *server) serve() error {
+ 	l := strings.Split(s.hosts, ",")
+ 	wg.Add(len(l))
+ 
+-	serve := func(host string) {
++	serve := func(fullHost string) {
+ 		defer wg.Done()
+-		lis, err := net.Listen("tcp", host)
++
++		// If the full host string is like unix:/foo/bar then use unix domain sockets rather than TCP sockets.
++		var protocol string
++		var host string
++		parts := strings.Split(fullHost, ":")
++		if len(parts) == 2 && parts[0] == "unix" {
++			protocol = "unix"
++			host = parts[1]
++		} else {
++			protocol = "tcp"
++			host = fullHost
++		}
++
++		lis, err := net.Listen(protocol, host)
+ 		if err != nil {
+ 			log.WithFields(log.Fields{
+ 				"Topic": "grpc",
