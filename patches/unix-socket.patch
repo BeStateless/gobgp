@@ -10,7 +10,7 @@ From: Aaron Jones <aaron@vexing.codes>
  3 files changed, 25 insertions(+), 5 deletions(-)
 
 diff --git a/cmd/gobgp/common.go b/cmd/gobgp/common.go
-index 8fa31fc8..1d6c512b 100644
+index 8fa31fc8..1e359e48 100644
 --- a/cmd/gobgp/common.go
 +++ b/cmd/gobgp/common.go
 @@ -200,9 +200,14 @@ func newClient(ctx context.Context) (api.GobgpApiClient, context.CancelFunc, err
