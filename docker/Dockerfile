@@ -1,13 +1,20 @@
-FROM golang:stretch
+FROM statelesstestregistry.azurecr.io/stateless/base:2 as build
 COPY ./docker/monitor /
 WORKDIR /tmp/gobgp
 COPY patch ./
 COPY patches ./patches
-RUN apt-get update \
+RUN export GOPATH=/go \
+ && export PATH="$GOPATH/bin:/usr/local/go/bin:$PATH" \
+ && apt-get update \
  && apt-get install --yes --no-install-recommends \
+      ca-certificates \
+      golang \
       socat \
       stgit \
+ && rm -rf /var/lib/apt/lists/* \
  && ./patch \
+ && mkdir -p "$GOPATH/src" "$GOPATH/bin" \
+ && chmod -R 777 "$GOPATH" \
  && mkdir -p $GOPATH/src/github.com/osrg \
  && mv gobgp $GOPATH/src/github.com/osrg \
  && cd $GOPATH/src/github.com/osrg/gobgp \
