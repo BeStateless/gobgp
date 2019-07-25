@@ -1,4 +1,4 @@
-FROM statelesstestregistry.azurecr.io/stateless/base:2 as build
+FROM statelesstestregistry.azurecr.io/stateless/base:4 as build
 COPY ./docker/monitor /
 WORKDIR /tmp/gobgp
 COPY patch ./
