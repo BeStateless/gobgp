@@ -6,14 +6,15 @@ From: Aaron Jones <aaron@vexing.codes>
 ---
  cmd/gobgp/common.go       |   11 ++++++++---
  cmd/gobgp/root.go         |    2 ++
- pkg/server/grpc_server.go |   17 +++++++++++++++--
- 3 files changed, 25 insertions(+), 5 deletions(-)
+ go.mod                    |    2 +-
+ pkg/server/grpc_server.go |   15 ++++++++++++++-
+ 4 files changed, 25 insertions(+), 5 deletions(-)
 
 diff --git a/cmd/gobgp/common.go b/cmd/gobgp/common.go
-index 8fa31fc8..1e359e48 100644
+index a5dd99cb..82243dfe 100644
 --- a/cmd/gobgp/common.go
 +++ b/cmd/gobgp/common.go
-@@ -200,9 +200,14 @@ func newClient(ctx context.Context) (api.GobgpApiClient, context.CancelFunc, err
+@@ -199,9 +199,14 @@ func newClient(ctx context.Context) (api.GobgpApiClient, context.CancelFunc, err
  		grpcOpts = append(grpcOpts, grpc.WithInsecure())
  	}
  
@@ -32,7 +33,7 @@ index 8fa31fc8..1e359e48 100644
  	cc, cancel := context.WithTimeout(ctx, time.Second)
  	conn, err := grpc.DialContext(cc, target, grpcOpts...)
 diff --git a/cmd/gobgp/root.go b/cmd/gobgp/root.go
-index dc8a3fe1..2738581f 100644
+index 539ae2ed..3490bcb3 100644
 --- a/cmd/gobgp/root.go
 +++ b/cmd/gobgp/root.go
 @@ -26,6 +26,7 @@ import (
@@ -43,7 +44,7 @@ index dc8a3fe1..2738581f 100644
  	Host         string
  	Port         int
  	Debug        bool
-@@ -80,6 +81,7 @@ func newRootCmd() *cobra.Command {
+@@ -81,6 +82,7 @@ func newRootCmd() *cobra.Command {
  		},
  	}
  
@@ -51,32 +52,42 @@ index dc8a3fe1..2738581f 100644
  	rootCmd.PersistentFlags().StringVarP(&globalOpts.Host, "host", "u", "127.0.0.1", "host")
  	rootCmd.PersistentFlags().IntVarP(&globalOpts.Port, "port", "p", 50051, "port")
  	rootCmd.PersistentFlags().BoolVarP(&globalOpts.Json, "json", "j", false, "use json format to output format")
+diff --git a/go.mod b/go.mod
+index 928dc102..bb773464 100644
+--- a/go.mod
++++ b/go.mod
+@@ -35,7 +35,7 @@ require (
+ 	golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6 // indirect
+ 	golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67 // indirect
+ 	google.golang.org/genproto v0.0.0-20170731182057-09f6ed296fc6 // indirect
+-	google.golang.org/grpc v1.5.1
++	google.golang.org/grpc v1.24.0
+ 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+ 	gopkg.in/yaml.v2 v2.0.0-20170721122051-25c4ec802a7d // indirect
+ )
 diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
-index cb93c599..b43e8e4c 100644
+index 3c7527b2..ebbe1175 100644
 --- a/pkg/server/grpc_server.go
 +++ b/pkg/server/grpc_server.go
-@@ -64,9 +64,22 @@ func (s *server) serve() error {
- 	l := strings.Split(s.hosts, ",")
- 	wg.Add(len(l))
- 
--	serve := func(host string) {
-+	serve := func(fullHost string) {
- 		defer wg.Done()
--		lis, err := net.Listen("tcp", host)
+@@ -65,7 +65,20 @@ func (s *server) serve() error {
+ 	var err error
+ 	for _, host := range strings.Split(s.hosts, ",") {
+ 		var lis net.Listener
+-		lis, err = net.Listen("tcp", host)
 +
 +		// If the full host string is like unix:/foo/bar then use unix domain sockets rather than TCP sockets.
 +		var protocol string
-+		var host string
-+		parts := strings.Split(fullHost, ":")
++		var address string
++		parts := strings.Split(host, ":")
 +		if len(parts) == 2 && parts[0] == "unix" {
 +			protocol = "unix"
-+			host = parts[1]
++			address = parts[1]
 +		} else {
 +			protocol = "tcp"
-+			host = fullHost
++			address = host
 +		}
 +
-+		lis, err := net.Listen(protocol, host)
++		lis, err = net.Listen(protocol, address)
  		if err != nil {
  			log.WithFields(log.Fields{
  				"Topic": "grpc",

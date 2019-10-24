@@ -1,0 +1,308 @@
+Adds the SetConfig API to GoBGP
+
+From: Saxon Parker <saxon@stateless.net>
+
+This API allows you to set the configuration of the GoBGP router
+after it's been launched and get an error if the configuraiton
+failed to be applied.
+---
+ api/gobgp.proto                |   15 ++++++
+ cmd/gobgpd/main.go             |  101 ++++++++++++++++++++++++----------------
+ internal/pkg/config/default.go |    4 ++
+ pkg/server/grpc_server.go      |   37 ++++++++++++++-
+ pkg/server/server.go           |   24 +++++++---
+ 5 files changed, 132 insertions(+), 49 deletions(-)
+
+diff --git a/api/gobgp.proto b/api/gobgp.proto
+index b61b4759..329b6930 100644
+--- a/api/gobgp.proto
++++ b/api/gobgp.proto
+@@ -95,6 +95,8 @@ service GobgpApi {
+ 
+   rpc AddBmp(AddBmpRequest) returns (google.protobuf.Empty);
+   rpc DeleteBmp(DeleteBmpRequest) returns (google.protobuf.Empty);
++
++  rpc SetConfig(SetConfigRequest) returns (SetConfigResponse) {}
+ }
+ 
+ message StartBgpRequest {
+@@ -1191,3 +1193,16 @@ message Rpki {
+   RPKIConf conf = 1;
+   RPKIState state = 2;
+ }
++
++enum ConfigFormat {
++  TOML = 0;
++  JSON = 1;
++  YAML = 2;
++}
++
++message SetConfigRequest{
++  string config = 1;
++  ConfigFormat config_format = 2;
++}
++
++message SetConfigResponse{
+diff --git a/cmd/gobgpd/main.go b/cmd/gobgpd/main.go
+index 48eb43ac..9e4a1b7a 100644
+--- a/cmd/gobgpd/main.go
++++ b/cmd/gobgpd/main.go
+@@ -36,6 +36,7 @@ import (
+ 
+ 	api "github.com/osrg/gobgp/api"
+ 	"github.com/osrg/gobgp/internal/pkg/version"
++	iconfig "github.com/osrg/gobgp/internal/pkg/config"
+ 	"github.com/osrg/gobgp/pkg/config"
+ 	"github.com/osrg/gobgp/pkg/server"
+ )
+@@ -149,7 +150,10 @@ func main() {
+ 	}
+ 
+ 	log.Info("gobgpd started")
+-	bgpServer := server.NewBgpServer(server.GrpcListenAddress(opts.GrpcHosts), server.GrpcOption(grpcOpts))
++	configCh := make(chan *iconfig.BgpConfigSet)
++	bgpServer := server.NewBgpServerWithAPI(configCh,
++	                                        server.GrpcListenAddress(opts.GrpcHosts),
++	                                        server.GrpcOption(grpcOpts))
+ 	go bgpServer.Serve()
+ 
+ 	if opts.UseSdNotify {
+@@ -162,58 +166,73 @@ func main() {
+ 		}
+ 	}
+ 
+-	if opts.ConfigFile == "" {
+-		<-sigCh
+-		stopServer(bgpServer, opts.UseSdNotify)
+-		return
+-	}
+-
+ 	signal.Notify(sigCh, syscall.SIGHUP)
+ 
+-	initialConfig, err := config.ReadConfigFile(opts.ConfigFile, opts.ConfigType)
+-	if err != nil {
+-		log.WithFields(log.Fields{
+-			"Topic": "Config",
+-			"Error": err,
+-		}).Fatalf("Can't read config file %s", opts.ConfigFile)
+-	}
+-	log.WithFields(log.Fields{
+-		"Topic": "Config",
+-	}).Info("Finished reading the config file")
+-
+-	currentConfig, err := config.InitialConfig(context.Background(), bgpServer, initialConfig, opts.GracefulRestart)
+-	if err != nil {
+-		log.WithFields(log.Fields{
+-			"Topic": "Config",
+-			"Error": err,
+-		}).Fatalf("Failed to apply initial configuration %s", opts.ConfigFile)
+-	}
+-
+-	for sig := range sigCh {
+-		if sig != syscall.SIGHUP {
+-			stopServer(bgpServer, opts.UseSdNotify)
+-			return
+-		}
+-
+-		log.WithFields(log.Fields{
+-			"Topic": "Config",
+-		}).Info("Reload the config file")
+-		newConfig, err := config.ReadConfigFile(opts.ConfigFile, opts.ConfigType)
++	var currentConfig *iconfig.BgpConfigSet
++	var initialConfig *iconfig.BgpConfigSet
++	if opts.ConfigFile != "" {
++		var err error
++		initialConfig, err = config.ReadConfigFile(opts.ConfigFile, opts.ConfigType)
+ 		if err != nil {
+ 			log.WithFields(log.Fields{
+ 				"Topic": "Config",
+ 				"Error": err,
+-			}).Warningf("Can't read config file %s", opts.ConfigFile)
+-			continue
++			}).Fatalf("Can't read config file %s", opts.ConfigFile)
+ 		}
++		log.WithFields(log.Fields{
++			"Topic": "Config",
++		}).Info("Finished reading the config file")
+ 
+-		currentConfig, err = config.UpdateConfig(context.Background(), bgpServer, currentConfig, newConfig)
++		currentConfig, err = config.InitialConfig(context.Background(), bgpServer, initialConfig, opts.GracefulRestart)
+ 		if err != nil {
+ 			log.WithFields(log.Fields{
+ 				"Topic": "Config",
+ 				"Error": err,
+-			}).Warningf("Failed to update config %s", opts.ConfigFile)
+-			continue
++			}).Fatalf("Failed to apply initial configuration %s", opts.ConfigFile)
++		}
++	}
++
++	for {
++		select {
++		case sig := <-sigCh:
++			if sig != syscall.SIGHUP {
++				stopServer(bgpServer, opts.UseSdNotify)
++				return
++			}
++
++			if opts.ConfigFile != "" {
++				log.WithFields(log.Fields{
++					"Topic": "Config",
++				}).Info("Reload the config file")
++				newConfig, err := config.ReadConfigFile(opts.ConfigFile, opts.ConfigType)
++				if err != nil {
++					log.WithFields(log.Fields{
++						"Topic": "Config",
++						"Error": err,
++					}).Warningf("Can't read config file %s", opts.ConfigFile)
++					continue
++				}
++
++				configCh <- newConfig
++			}
++
++		case newConfig := <-configCh:
++			if currentConfig == nil {
++				currentConfig, err = config.InitialConfig(context.Background(), bgpServer, newConfig, opts.GracefulRestart)
++			} else {
++				currentConfig, err = config.UpdateConfig(context.Background(), bgpServer, currentConfig, newConfig)
++			}
++			if err != nil {
++				log.WithFields(log.Fields{
++					"Topic": "Config",
++					"Error": err,
++				}).Warningf("Failed to update config")
++				continue
++			} else {
++				log.WithFields(log.Fields{
++					"Topic": "Config",
++				}).Warningf("Updated config")
++			}
+ 		}
+ 	}
+ }
+diff --git a/internal/pkg/config/default.go b/internal/pkg/config/default.go
+index c86ada57..9d52481d 100644
+--- a/internal/pkg/config/default.go
++++ b/internal/pkg/config/default.go
+@@ -340,6 +340,10 @@ func setDefaultPolicyConfigValuesWithViper(v *viper.Viper, p *PolicyDefinition)
+ 	return nil
+ }
+ 
++func SetDefaultConfigValuesWithViper(v *viper.Viper, b *BgpConfigSet) error {
++	return setDefaultConfigValuesWithViper(v, b)
++}
++
+ func setDefaultConfigValuesWithViper(v *viper.Viper, b *BgpConfigSet) error {
+ 	if v == nil {
+ 		v = viper.New()
+diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
+index ebbe1175..83449cee 100644
+--- a/pkg/server/grpc_server.go
++++ b/pkg/server/grpc_server.go
+@@ -34,6 +34,7 @@ import (
+ 	log "github.com/sirupsen/logrus"
+ 	"golang.org/x/net/context"
+ 	"google.golang.org/grpc"
++	"github.com/spf13/viper"
+ 
+ 	api "github.com/osrg/gobgp/api"
+ 	"github.com/osrg/gobgp/internal/pkg/apiutil"
+@@ -46,14 +47,16 @@ type server struct {
+ 	bgpServer  *BgpServer
+ 	grpcServer *grpc.Server
+ 	hosts      string
++	configCh   chan *config.BgpConfigSet
+ }
+ 
+-func newAPIserver(b *BgpServer, g *grpc.Server, hosts string) *server {
++func newAPIserver(b *BgpServer, g *grpc.Server, hosts string, configCh chan *config.BgpConfigSet) *server {
+ 	grpc.EnableTracing = false
+ 	s := &server{
+ 		bgpServer:  b,
+ 		grpcServer: g,
+ 		hosts:      hosts,
++		configCh:   configCh,
+ 	}
+ 	api.RegisterGobgpApiServer(g, s)
+ 	return s
+@@ -1769,3 +1772,35 @@ func (s *server) StopBgp(ctx context.Context, r *api.StopBgpRequest) (*empty.Emp
+ func (s *server) GetTable(ctx context.Context, r *api.GetTableRequest) (*api.GetTableResponse, error) {
+ 	return s.bgpServer.GetTable(ctx, r)
+ }
++
++func (s *server) SetConfig(ctx context.Context, arg *api.SetConfigRequest) (*api.SetConfigResponse, error) {
++	var cfg = []byte(arg.Config)
++	var configType string
++	switch arg.ConfigFormat {
++	case api.ConfigFormat_TOML:
++		configType = "toml"
++	case api.ConfigFormat_JSON:
++		configType = "json"
++	case api.ConfigFormat_YAML:
++		configType = "yaml"
++	}
++
++	c := &config.BgpConfigSet{}
++	v := viper.New()
++	v.SetConfigType(configType)
++
++	var err error
++	if err = v.ReadConfig(bytes.NewBuffer(cfg)); err != nil {
++		return nil, fmt.Errorf("Could not read config. Error: %s", err)
++	}
++	if err = v.UnmarshalExact(c); err != nil {
++		return nil, fmt.Errorf("Could not parse config. Error: %s", err)
++	}
++	if err = config.SetDefaultConfigValuesWithViper(v, c); err != nil {
++		return nil, fmt.Errorf("Could not set default values. Error: %s", err)
++	}
++
++	s.configCh <- c
++
++	return &api.SetConfigResponse{}, nil
++}
+diff --git a/pkg/server/server.go b/pkg/server/server.go
+index d6c54e10..580f9a50 100644
+--- a/pkg/server/server.go
++++ b/pkg/server/server.go
+@@ -137,12 +137,7 @@ type BgpServer struct {
+ 	uuidMap      map[string]uuid.UUID
+ }
+ 
+-func NewBgpServer(opt ...ServerOption) *BgpServer {
+-	opts := options{}
+-	for _, o := range opt {
+-		o(&opts)
+-	}
+-
++func NewBgpServer() *BgpServer {
+ 	roaManager, _ := newROAManager(0)
+ 	s := &BgpServer{
+ 		neighborMap:  make(map[string]*peer),
+@@ -155,9 +150,24 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
+ 	}
+ 	s.bmpManager = newBmpClientManager(s)
+ 	s.mrtManager = newMrtManager(s)
++	return s
++}
++
++func NewBgpServerWithAPI(configCh chan *config.BgpConfigSet, opt ...ServerOption) *BgpServer {
++	opts := options{}
++	for _, o := range opt {
++		o(&opts)
++	}
++
++	s := NewBgpServer()
++
+ 	if len(opts.grpcAddress) != 0 {
++		if configCh == nil {
++			log.Fatalf("Nil config channel pointer provided to GRPC server")
++			return nil
++		}
+ 		grpc.EnableTracing = false
+-		api := newAPIserver(s, grpc.NewServer(opts.grpcOption...), opts.grpcAddress)
++		api := newAPIserver(s, grpc.NewServer(opts.grpcOption...), opts.grpcAddress, configCh)
+ 		go func() {
+ 			if err := api.serve(); err != nil {
+ 				log.Fatalf("failed to listen grpc port: %s", err)

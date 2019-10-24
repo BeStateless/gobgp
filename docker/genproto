@@ -1,0 +1,5 @@
+#!/bin/bash -eux
+cd "$(readlink --canonicalize "$(dirname "$0")"/..)"
+[[ ! -d gobgp ]] && ./patch
+docker build . --file docker/Dockerfile.genproto --tag gobgp-genproto
+docker run --rm --volume "$(pwd):/src:rw" gobgp-genproto
