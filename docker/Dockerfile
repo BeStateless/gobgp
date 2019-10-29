@@ -1,4 +1,4 @@
-FROM statelesstestregistry.azurecr.io/stateless/base:7 as build
+FROM statelesstestregistry.azurecr.io/stateless/base:8 as build
 
 # Install build dependencies.
 RUN apt-get update \
