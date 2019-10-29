@@ -3,13 +3,16 @@ FROM statelesstestregistry.azurecr.io/stateless/base:7 as build
 # Install build dependencies.
 RUN apt-get update \
  && apt-get install --yes --no-install-recommends \
-      build-essential \
       ca-certificates \
       golang \
-      procps \
-      socat \
       stgit \
- && rm -rf /var/lib/apt/lists/*
+      unzip \
+      wget \
+ && rm -rf /var/lib/apt/lists/* \
+ && cd /usr/local \
+ && wget https://github.com/protocolbuffers/protobuf/releases/download/v3.7.1/protoc-3.7.1-linux-x86_64.zip \
+ && unzip protoc*.zip \
+ && rm protoc*.zip
 
 WORKDIR /tmp/gobgp
 COPY patch ./
@@ -22,12 +25,12 @@ RUN export GOPATH=/go \
  && chmod -R 777 "$GOPATH" \
  && mkdir -p $GOPATH/src/github.com/osrg \
  && mv gobgp $GOPATH/src/github.com/osrg \
- && cd $GOPATH/src/github.com/osrg/gobgp \
  && rm -rf /tmp/gobgp \
+ && cd $GOPATH/src/github.com/osrg/gobgp \
  && go mod download \
- && go build -o /gobgp ./cmd/gobgp/ \
- && go build -o /gobgpd ./cmd/gobgpd/ \
- && rm -rf $GOPATH
+ && go install github.com/golang/protobuf/protoc-gen-go \
+ && export GOPROTO="$(GO111MODULE=on go list -f '{{ .Dir }}' -m github.com/golang/protobuf)" \
+ && mkdir /gobgp-proto \
+ && protoc -I"${GOPROTO}"/ptypes -I./api --go_out=plugins=grpc:/gobgp-proto ./api/*.proto
 
-COPY ./docker/monitor /
-CMD [ "/monitor" ]
+CMD cp /gobgp-proto/*.go /src/gobgp/api/

@@ -1,0 +1,105 @@
+Change MonitorTable to return the entire set of best paths each time.
+
+From: Aaron Jones <aaron@vexing.codes>
+
+
+---
+ api/gobgp.proto           |    2 +-
+ cmd/gobgp/monitor.go      |   10 +++++++---
+ pkg/server/grpc_server.go |    4 ++--
+ pkg/server/server.go      |   20 ++++++++++++++------
+ 4 files changed, 24 insertions(+), 12 deletions(-)
+
+diff --git a/api/gobgp.proto b/api/gobgp.proto
+index 329b6930..0eac96e9 100644
+--- a/api/gobgp.proto
++++ b/api/gobgp.proto
+@@ -263,7 +263,7 @@ message MonitorTableRequest {
+ }
+ 
+ message MonitorTableResponse {
+-  Path path = 1;
++  repeated Path paths = 1;
+ }
+ 
+ message AddVrfRequest {
+diff --git a/cmd/gobgp/monitor.go b/cmd/gobgp/monitor.go
+index bc31bde9..865bd693 100644
+--- a/cmd/gobgp/monitor.go
++++ b/cmd/gobgp/monitor.go
+@@ -106,10 +106,14 @@ func newMonitorCmd() *cobra.Command {
+ 				exitWithError(err)
+ 			}
+ 			if globalOpts.Json {
+-				j, _ := json.Marshal(apiutil.NewDestination(&api.Destination{Paths: []*api.Path{r.Path}}))
+-				fmt.Println(string(j))
++				for _, p := range r.Paths {
++					j, _ := json.Marshal(apiutil.NewDestination(&api.Destination{Paths: []*api.Path{p}}))
++					fmt.Println(string(j))
++				}
+ 			} else {
+-				monitorRoute([]*api.Path{r.Path}, bgp.BGP_ADD_PATH_NONE)
++				for _, p := range r.Paths {
++					monitorRoute([]*api.Path{p}, bgp.BGP_ADD_PATH_NONE)
++				}
+ 			}
+ 		}
+ 	}
+diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
+index 83449cee..6d00c176 100644
+--- a/pkg/server/grpc_server.go
++++ b/pkg/server/grpc_server.go
+@@ -205,9 +205,9 @@ func (s *server) ListPath(r *api.ListPathRequest, stream api.GobgpApi_ListPathSe
+ func (s *server) MonitorTable(arg *api.MonitorTableRequest, stream api.GobgpApi_MonitorTableServer) error {
+ 	ctx, cancel := context.WithCancel(context.Background())
+ 	var err error
+-	s.bgpServer.MonitorTable(ctx, arg, func(p *api.Path) {
++	s.bgpServer.MonitorTable(ctx, arg, func(pl []*api.Path) {
+ 		if err = stream.Send(&api.MonitorTableResponse{
+-			Path: p,
++			Paths: pl,
+ 		}); err != nil {
+ 			cancel()
+ 			return
+diff --git a/pkg/server/server.go b/pkg/server/server.go
+index 580f9a50..a3b64942 100644
+--- a/pkg/server/server.go
++++ b/pkg/server/server.go
+@@ -3664,7 +3664,7 @@ func (s *BgpServer) ResetRpki(ctx context.Context, r *api.ResetRpkiRequest) erro
+ 	}, false)
+ }
+ 
+-func (s *BgpServer) MonitorTable(ctx context.Context, r *api.MonitorTableRequest, fn func(*api.Path)) error {
++func (s *BgpServer) MonitorTable(ctx context.Context, r *api.MonitorTableRequest, fn func([]*api.Path)) error {
+ 	if r == nil {
+ 		return fmt.Errorf("nil request")
+ 	}
+@@ -3712,15 +3712,23 @@ func (s *BgpServer) MonitorTable(ctx context.Context, r *api.MonitorTableRequest
+ 				case *watchEventUpdate:
+ 					pl = msg.PathList
+ 				}
++				// Filter path list
++				var finalPl []*api.Path = make([]*api.Path, 0)
++
+ 				for _, path := range pl {
+ 					if path == nil || (r.Family != nil && family != path.GetRouteFamily()) {
+ 						continue
+ 					}
+-					select {
+-					case <-ctx.Done():
+-						return
+-					default:
+-						fn(toPathApi(path, nil))
++
++					finalPl = append(finalPl, toPathApi(path, nil))
++				}
++
++				select {
++				case <-ctx.Done():
++					return
++				default:
++					if len(finalPl) != 0 {
++						fn(finalPl)
+ 					}
+ 				}
+ 			case <-ctx.Done():
