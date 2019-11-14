@@ -1,18 +1,27 @@
-#!/bin/bash
+#!/bin/bash -eu
 
 # Wait for gobgpd to start up and create the unix domain socket for the API.
 # This will be done manually by the orchestrator because it needs to be
 # launched in a separate network namespace.
 echo "Waiting for gobgpd.sock..."
-while [[ ! -S /gobgpd.sock ]]; do sleep 1; done
+while [[ ! -S /gobgpd.sock ]]; do sleep 0.1; done
 
 # Get gobgp's pid so we can watch it and know if it dies.
-GOBGPD_PID=$(ps ax -o pid,cmd | grep gobgpd | grep -v grep | awk '{print $1}')
+GOBGPD_PID=$(ps ax -o pid,comm | grep gobgpd | awk '{print $1}')
 if [[ $? -ne 0 || -z "${GOBGPD_PID}" ]]; then
   echo "Detected gobgpd launch, but couldn't get pid."
   exit 1
 fi
 echo "gobgpd launched, pid=${GOBGPD_PID}"
+
+# Try to get zebra's pid. It may or may not be running, but if it is running
+# then we want to die if it dies.
+ZEBRA_PID=$(ps ax -o pid,comm | grep zebra | awk '{print $1}' || true)
+if [[ -n "${ZEBRA_PID}" ]]; then
+  echo "zebra launched, pid=${ZEBRA_PID}"
+else
+  echo "zebra launch not detected"
+fi
 
 # Launch socat that will listen on TCP and communicate the data that goes over
 # that TCP connection to the gobgpd unix socket.
@@ -47,6 +56,12 @@ while sleep 1; do
     # Unfortunately, can't get the exit code since gobgpd isn't a child of this
     # bash script.
     echo "gobgp died...exiting"
+    exit 1
+  fi
+  if [[ -n "${ZEBRA_PID}" && ! -d "/proc/${ZEBRA_PID}" ]]; then
+    # Unfortunately, can't get the exit code since zebra isn't a child of this
+    # bash script.
+    echo "zebra died...exiting"
     exit 1
   fi
 done

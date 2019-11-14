@@ -1,0 +1,96 @@
+#!/bin/bash -eux
+# Runs some simple sanity checks to make sure the gobgp container works like we think it should.
+
+[[ ${EUID} -ne 0 ]] && echo "Must run as root." && exit 1
+
+# Run from the parent directory of this script (the repository root.)
+cd "$(readlink --canonicalize "$(dirname "$0")/..")"
+
+# Make sure things get cleaned up no matter how we exit. Comment out the contents of this function and replace them with
+# "true" if you have a failing test and you don't want cleanup to run and destroy the state.
+cleanup() {
+  docker rm -f "${CONTAINER_ID}" >/dev/null 2>&1 || true
+  ip netns del gobgp_ns || true
+}
+trap cleanup EXIT
+
+# Make sure the gobgp container we want to test has been built from the latest version of the Dockerfile.
+docker build . --file docker/Dockerfile --tag gobgp_test
+
+# The gobgp container is a little weird. We run a monitor script in the primary container namespace, but gobgp/zebra run
+# in another, manually created namespace. Here, the manually created namespace is named "gobgp_ns".
+ip netns add gobgp_ns
+
+########################
+# TENANT VERSION TESTS #
+########################
+
+# Run the "tenant" version of the router (does not run zebra).
+CONTAINER_ID="$(docker run --detach --net none gobgp_test)"
+
+# Launch supervisord in the manually created network namespace, but in all of the other namespaces (pid, mount, user,
+# etc. of the container).
+MONITOR_PID="$(docker inspect --format '{{.State.Pid}}' "${CONTAINER_ID}")"
+nsenter -t "${MONITOR_PID}" -m -u -i -p -r -C --net=/var/run/netns/gobgp_ns /bin/bash -c \
+  "supervisord -c /etc/supervisor/supervisor_tenant.conf </dev/null >/proc/1/fd/1 2>/proc/1/fd/2 &"
+
+# Wait for gobgpd to start up.
+until docker exec "${CONTAINER_ID}" bash -c "[[ -S /gobgpd.sock ]]"; do echo "Waiting for gobgpd startup..."; done
+
+# Run a gobgp command through the unix socket to make sure that works.
+docker exec "${CONTAINER_ID}" gobgp --unix-socket /gobgpd.sock neighbor
+
+# Wait for the monitor script to acknowledge that gobgpd has started. I'm not sure of any non-hacky non-sleep way to do
+# this. The monitor script checks for gobgpd to have started every 0.1 seconds, so waiting a second here is likely
+# plenty of time.
+sleep 1
+
+# Kill the gobgpd process.
+kill -9 "$(ip netns exec gobgp_ns ps -e -o pid,comm | grep gobgpd | awk '{print $1}')"
+
+# Wait up to 3 seconds for the container to die as a result of killing gobgpd.
+MONITOR_DIED=false
+for i in $(seq 1 3); do
+  sleep 1
+  [[ "$(docker inspect --format '{{.State.Status}}' "${CONTAINER_ID}")" == "exited" ]] && MONITOR_DIED=true && break
+done
+[[ "${MONITOR_DIED}" = false ]] && echo "Monitor did not die when gobgpd was killed!" && exit 1
+
+docker rm -f "${CONTAINER_ID}"
+
+######################
+# LINK VERSION TESTS #
+######################
+
+# Run the "link" version of the router.
+CONTAINER_ID="$(docker run --detach --net none gobgp_test)"
+
+# Launch supervisord in the manually created network namespace, but in all of the other namespaces (pid, mount, user,
+# etc. of the container).
+MONITOR_PID="$(docker inspect --format '{{.State.Pid}}' "${CONTAINER_ID}")"
+nsenter -t "${MONITOR_PID}" -m -u -i -p -r -C --net=/var/run/netns/gobgp_ns /bin/bash -c \
+  "supervisord -c /etc/supervisor/supervisor_link.conf </dev/null >/proc/1/fd/1 2>/proc/1/fd/2 &"
+
+# Wait for gobgpd to start up.
+until docker exec "${CONTAINER_ID}" bash -c "[[ -S /gobgpd.sock ]]"; do echo "Waiting for gobgpd startup..."; done
+
+# Run a gobgp command through the unix socket to make sure that works.
+docker exec "${CONTAINER_ID}" gobgp --unix-socket /gobgpd.sock neighbor
+
+# Wait for the monitor script to acknowledge that gobgpd has started. I'm not sure of any non-hacky non-sleep way to do
+# this. The monitor script checks for gobgpd to have started every 0.1 seconds, so waiting a second here is likely
+# plenty of time.
+sleep 1
+
+# Kill the zebra process.
+kill -9 "$(ip netns exec gobgp_ns ps -e -o pid,comm | grep zebra | awk '{print $1}')"
+
+# Wait up to 3 seconds for the container to die as a result of killing zebra.
+MONITOR_DIED=false
+for i in $(seq 1 3); do
+  sleep 1
+  [[ "$(docker inspect --format '{{.State.Status}}' "${CONTAINER_ID}")" == "exited" ]] && MONITOR_DIED=true && break
+done
+[[ "${MONITOR_DIED}" = false ]] && echo "Monitor did not die when zebra was killed!" && exit 1
+
+docker rm -f "${CONTAINER_ID}"
