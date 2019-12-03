@@ -1,4 +1,4 @@
-FROM statelesstestregistry.azurecr.io/stateless/base:8 as build
+FROM statelesstestregistry.azurecr.io/stateless/base:9 as build
 
 # Install build dependencies.
 RUN apt-get update \
@@ -27,6 +27,10 @@ RUN export GOPATH=/go \
  && mv gobgp $GOPATH/src/github.com/osrg \
  && rm -rf /tmp/gobgp \
  && cd $GOPATH/src/github.com/osrg/gobgp \
+    # This is goofy, but we need to generate the GRPC with the version that GoBGP uses, but when we compile GoBGP we
+    # need to use a newer version to fix a bug in GRPC. No matter what we have to do something weird. When we generate
+    # the GRPC with the newer version it generates a bunch of garbage and makes the diffs very annoying.
+ && sed -i 's|google.golang.org/grpc v1.24.0|google.golang.org/grpc v1.5.1|' go.mod \
  && go mod download \
  && go install github.com/golang/protobuf/protoc-gen-go \
  && export GOPROTO="$(GO111MODULE=on go list -f '{{ .Dir }}' -m github.com/golang/protobuf)" \

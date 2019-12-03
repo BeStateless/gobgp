@@ -11,7 +11,7 @@ From: Aaron Jones <aaron@vexing.codes>
  4 files changed, 24 insertions(+), 12 deletions(-)
 
 diff --git a/api/gobgp.proto b/api/gobgp.proto
-index 329b6930..0eac96e9 100644
+index d9a123ba..10f6ea66 100644
 --- a/api/gobgp.proto
 +++ b/api/gobgp.proto
 @@ -263,7 +263,7 @@ message MonitorTableRequest {
