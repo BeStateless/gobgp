@@ -6,15 +6,15 @@ This API allows you to set the configuration of the GoBGP router
 after it's been launched and get an error if the configuraiton
 failed to be applied.
 ---
- api/gobgp.proto                |   15 ++++++
+ api/gobgp.proto                |   16 ++++++
  cmd/gobgpd/main.go             |  101 ++++++++++++++++++++++++----------------
  internal/pkg/config/default.go |    4 ++
  pkg/server/grpc_server.go      |   37 ++++++++++++++-
  pkg/server/server.go           |   24 +++++++---
- 5 files changed, 132 insertions(+), 49 deletions(-)
+ 5 files changed, 133 insertions(+), 49 deletions(-)
 
 diff --git a/api/gobgp.proto b/api/gobgp.proto
-index b61b4759..329b6930 100644
+index b61b4759..d9a123ba 100644
 --- a/api/gobgp.proto
 +++ b/api/gobgp.proto
 @@ -95,6 +95,8 @@ service GobgpApi {
@@ -26,7 +26,7 @@ index b61b4759..329b6930 100644
  }
  
  message StartBgpRequest {
-@@ -1191,3 +1193,16 @@ message Rpki {
+@@ -1191,3 +1193,17 @@ message Rpki {
    RPKIConf conf = 1;
    RPKIState state = 2;
  }
@@ -43,6 +43,7 @@ index b61b4759..329b6930 100644
 +}
 +
 +message SetConfigResponse{
++}
 diff --git a/cmd/gobgpd/main.go b/cmd/gobgpd/main.go
 index 48eb43ac..9e4a1b7a 100644
 --- a/cmd/gobgpd/main.go
