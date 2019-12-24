@@ -1,4 +1,4 @@
-# This series applies on GIT commit v2.9.0
+# This series applies on GIT commit ba675f0174bf8916b888d7098ed9d3c129f8c338
 unix-socket.patch
 set-config-api.patch
 monitor-table-multi.patch

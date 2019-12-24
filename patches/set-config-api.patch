@@ -10,11 +10,11 @@ failed to be applied.
  cmd/gobgpd/main.go             |  101 ++++++++++++++++++++++++----------------
  internal/pkg/config/default.go |    4 ++
  pkg/server/grpc_server.go      |   37 ++++++++++++++-
- pkg/server/server.go           |   24 +++++++---
- 5 files changed, 133 insertions(+), 49 deletions(-)
+ pkg/server/server.go           |   23 +++++++--
+ 5 files changed, 133 insertions(+), 48 deletions(-)
 
 diff --git a/api/gobgp.proto b/api/gobgp.proto
-index b61b4759..d9a123ba 100644
+index 3ed531a9..d49dd652 100644
 --- a/api/gobgp.proto
 +++ b/api/gobgp.proto
 @@ -95,6 +95,8 @@ service GobgpApi {
@@ -26,7 +26,7 @@ index b61b4759..d9a123ba 100644
  }
  
  message StartBgpRequest {
-@@ -1191,3 +1193,17 @@ message Rpki {
+@@ -1192,3 +1194,17 @@ message Rpki {
    RPKIConf conf = 1;
    RPKIState state = 2;
  }
@@ -198,7 +198,7 @@ index c86ada57..9d52481d 100644
  	if v == nil {
  		v = viper.New()
 diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
-index ebbe1175..83449cee 100644
+index 331bb776..69762e62 100644
 --- a/pkg/server/grpc_server.go
 +++ b/pkg/server/grpc_server.go
 @@ -34,6 +34,7 @@ import (
@@ -227,7 +227,7 @@ index ebbe1175..83449cee 100644
  	}
  	api.RegisterGobgpApiServer(g, s)
  	return s
-@@ -1769,3 +1772,35 @@ func (s *server) StopBgp(ctx context.Context, r *api.StopBgpRequest) (*empty.Emp
+@@ -1770,3 +1773,35 @@ func (s *server) StopBgp(ctx context.Context, r *api.StopBgpRequest) (*empty.Emp
  func (s *server) GetTable(ctx context.Context, r *api.GetTableRequest) (*api.GetTableResponse, error) {
  	return s.bgpServer.GetTable(ctx, r)
  }
@@ -264,10 +264,10 @@ index ebbe1175..83449cee 100644
 +	return &api.SetConfigResponse{}, nil
 +}
 diff --git a/pkg/server/server.go b/pkg/server/server.go
-index d6c54e10..580f9a50 100644
+index b8e29f6d..461eefa6 100644
 --- a/pkg/server/server.go
 +++ b/pkg/server/server.go
-@@ -137,12 +137,7 @@ type BgpServer struct {
+@@ -138,11 +138,7 @@ type BgpServer struct {
  	uuidMap      map[string]uuid.UUID
  }
  
@@ -276,12 +276,11 @@ index d6c54e10..580f9a50 100644
 -	for _, o := range opt {
 -		o(&opts)
 -	}
--
 +func NewBgpServer() *BgpServer {
- 	roaManager, _ := newROAManager(0)
+ 	roaTable := table.NewROATable()
  	s := &BgpServer{
  		neighborMap:  make(map[string]*peer),
-@@ -155,9 +150,24 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
+@@ -156,9 +152,24 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
  	}
  	s.bmpManager = newBmpClientManager(s)
  	s.mrtManager = newMrtManager(s)

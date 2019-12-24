@@ -6,9 +6,9 @@ From: Aaron Jones <aaron@vexing.codes>
 ---
  cmd/gobgp/common.go       |   11 ++++++++---
  cmd/gobgp/root.go         |    2 ++
- go.mod                    |    2 +-
+ go.mod                    |    3 ++-
  pkg/server/grpc_server.go |   15 ++++++++++++++-
- 4 files changed, 25 insertions(+), 5 deletions(-)
+ 4 files changed, 26 insertions(+), 5 deletions(-)
 
 diff --git a/cmd/gobgp/common.go b/cmd/gobgp/common.go
 index a5dd99cb..82243dfe 100644
@@ -53,20 +53,21 @@ index 539ae2ed..3490bcb3 100644
  	rootCmd.PersistentFlags().IntVarP(&globalOpts.Port, "port", "p", 50051, "port")
  	rootCmd.PersistentFlags().BoolVarP(&globalOpts.Json, "json", "j", false, "use json format to output format")
 diff --git a/go.mod b/go.mod
-index 928dc102..bb773464 100644
+index f0c93e6f..acc71178 100644
 --- a/go.mod
 +++ b/go.mod
-@@ -35,7 +35,7 @@ require (
- 	golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6 // indirect
- 	golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67 // indirect
+@@ -33,7 +33,8 @@ require (
+ 	golang.org/x/net v0.0.0-20190620200207-3b0461eec859
+ 	golang.org/x/tools v0.0.0-20191026034945-b2104f82a97d // indirect
  	google.golang.org/genproto v0.0.0-20170731182057-09f6ed296fc6 // indirect
 -	google.golang.org/grpc v1.5.1
 +	google.golang.org/grpc v1.24.0
- 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
++	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
  	gopkg.in/yaml.v2 v2.0.0-20170721122051-25c4ec802a7d // indirect
+ 	honnef.co/go/tools v0.0.0-20191022112108-ee025456fe28 // indirect
  )
 diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
-index 3c7527b2..ebbe1175 100644
+index 215a1866..331bb776 100644
 --- a/pkg/server/grpc_server.go
 +++ b/pkg/server/grpc_server.go
 @@ -65,7 +65,20 @@ func (s *server) serve() error {
