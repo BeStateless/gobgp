@@ -10,3 +10,4 @@ export MM_VERSION=$(cat version)
 export CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 export IS_TARGET_REMOTE=$(git remote -v | grep origin | grep $OFFICIAL_REPO | head -n1 | wc -l)
+
