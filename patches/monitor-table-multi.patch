@@ -11,7 +11,7 @@ From: Aaron Jones <aaron@vexing.codes>
  4 files changed, 24 insertions(+), 12 deletions(-)
 
 diff --git a/api/gobgp.proto b/api/gobgp.proto
-index d9a123ba..10f6ea66 100644
+index d49dd652..9dfbb071 100644
 --- a/api/gobgp.proto
 +++ b/api/gobgp.proto
 @@ -263,7 +263,7 @@ message MonitorTableRequest {
@@ -46,7 +46,7 @@ index bc31bde9..865bd693 100644
  		}
  	}
 diff --git a/pkg/server/grpc_server.go b/pkg/server/grpc_server.go
-index 83449cee..6d00c176 100644
+index c8fb222b..efae6c12 100644
 --- a/pkg/server/grpc_server.go
 +++ b/pkg/server/grpc_server.go
 @@ -205,9 +205,9 @@ func (s *server) ListPath(r *api.ListPathRequest, stream api.GobgpApi_ListPathSe
@@ -62,10 +62,10 @@ index 83449cee..6d00c176 100644
  			cancel()
  			return
 diff --git a/pkg/server/server.go b/pkg/server/server.go
-index 580f9a50..a3b64942 100644
+index 1df3a287..adbcc8d1 100644
 --- a/pkg/server/server.go
 +++ b/pkg/server/server.go
-@@ -3664,7 +3664,7 @@ func (s *BgpServer) ResetRpki(ctx context.Context, r *api.ResetRpkiRequest) erro
+@@ -3692,7 +3692,7 @@ func (s *BgpServer) ResetRpki(ctx context.Context, r *api.ResetRpkiRequest) erro
  	}, false)
  }
  
@@ -74,7 +74,7 @@ index 580f9a50..a3b64942 100644
  	if r == nil {
  		return fmt.Errorf("nil request")
  	}
-@@ -3712,15 +3712,23 @@ func (s *BgpServer) MonitorTable(ctx context.Context, r *api.MonitorTableRequest
+@@ -3740,15 +3740,23 @@ func (s *BgpServer) MonitorTable(ctx context.Context, r *api.MonitorTableRequest
  				case *watchEventUpdate:
  					pl = msg.PathList
  				}
