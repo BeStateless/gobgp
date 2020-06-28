@@ -7,6 +7,7 @@ RUN apt-get update \
       automake \
       build-essential \
       ca-certificates \
+      curl \
       golang \
       libreadline-dev \
       texinfo \
@@ -26,6 +27,7 @@ RUN apt-get update \
       socat \
       stgit \
       supervisor \
+      unzip \
  && rm -rf /var/lib/apt/lists/*
 
 
@@ -75,12 +77,18 @@ RUN addgroup --system --gid 92 frr \
  && ldconfig \
  && rm -rf /frr
 
+RUN export PROTOC_ZIP=protoc-3.7.1-linux-x86_64.zip \
+ && curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v3.7.1/$PROTOC_ZIP \
+ && unzip -o $PROTOC_ZIP -d /usr/local bin/protoc \
+ && unzip -o $PROTOC_ZIP -d /usr/local 'include/*' \
+ && rm -f $PROTOC_ZIP
+
 # Compile the Stateless-patched GoBGP from source.
 WORKDIR /tmp/gobgp
 COPY patch ./
 COPY patches ./patches
 RUN export GOPATH=/go \
- && export PATH="$GOPATH/bin:/usr/local/go/bin:$PATH" \
+ && export PATH="$GOPATH/bin:/usr/local/bin/protoc:/usr/local/go/bin:$PATH" \
  && export GO111MODULE=on \
  && ./patch \
  && mkdir -p "$GOPATH/src" "$GOPATH/bin" \
@@ -89,6 +97,7 @@ RUN export GOPATH=/go \
  && mv gobgp $GOPATH/src/github.com/osrg \
  && cd $GOPATH/src/github.com/osrg/gobgp \
  && rm -rf /tmp/gobgp \
+ && ./tools/grpc/genproto.sh \
  && go mod download \
  && go build -o /usr/local/bin/gobgp ./cmd/gobgp/ \
  && go build -o /usr/local/bin/gobgpd ./cmd/gobgpd/ \
