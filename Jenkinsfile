@@ -7,7 +7,7 @@ pipeline {
         stage('sync_request') {
             steps {
                 withCredentials([usernameColonPassword(credentialsId: 'GitHub_StatelessOtto2', variable: 'USERPASS')]) {
-                    sh './jenkin-scripts/sync_request.sh'
+                    sh './jenkins-scripts/sync_request.sh'
                 }
             }
         }
