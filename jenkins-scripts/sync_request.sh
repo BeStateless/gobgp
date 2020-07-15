@@ -1,5 +1,5 @@
 #!/bin/bash -ex
-source ./jenkin-scripts/state.sh
+source ./jenkins-scripts/state.sh
 # Only run for post merge
 if [ "$IS_TARGET_REMOTE" = "1" ] && [ "$GIT_BRANCH" = "$BRANCH_DEV" ] ; then
     git fetch https://$USERPASS@github.com/$OFFICIAL_REPO/gobgp.git --tags
