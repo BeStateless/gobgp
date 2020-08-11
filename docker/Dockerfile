@@ -1,4 +1,4 @@
-FROM statelesstestregistry.azurecr.io/stateless/base:9 as build
+FROM statelesstestregistry.azurecr.io/stateless/base:11-preview as build
 
 # Install build dependencies.
 RUN apt-get update \
