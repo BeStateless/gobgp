@@ -1,32 +1,33 @@
-FROM statelesstestregistry.azurecr.io/stateless/base:11 as build
+FROM statelesstestregistry.azurecr.io/stateless/base:19 as build
 
 # Install build dependencies.
 RUN apt-get update \
  && apt-get install --yes --no-install-recommends \
       autoconf \
       automake \
+      bison \
       build-essential \
       ca-certificates \
       curl \
-      golang \
-      libreadline-dev \
-      texinfo \
-      pkg-config \
-      bison \
       flex \
+      golang \
       libc-ares-dev \
+      libcap-dev \
+      libelf-dev \
+      libjson-c-dev \
+      libreadline-dev \
+      libsnmp-dev \
+      libtool \
+      libyang2-dev \
+      pkg-config \
+      procps \
       python3-dev \
       python3-pytest \
       python3-sphinx \
-      libsnmp-dev \
-      libcap-dev \
-      libjson-c-dev \
-      libyang-dev \
-      libtool \
-      procps \
       socat \
       stgit \
       supervisor \
+      texinfo \
       unzip \
  && rm -rf /var/lib/apt/lists/*
 
@@ -41,7 +42,7 @@ RUN addgroup --system --gid 92 frr \
  && usermod -a -G frrvty frr \
  && git clone https://github.com/frrouting/frr.git frr \
  && cd frr \
- && git checkout frr-7.1 \
+ && git checkout frr-8.0 \
  && ./bootstrap.sh \
  && ./configure \
       --enable-exampledir=/usr/share/doc/frr/examples/ \
